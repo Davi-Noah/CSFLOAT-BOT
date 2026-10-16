@@ -43,63 +43,63 @@
 
 :root {
   color-scheme: light;
-  --background: #e9f1f7;
-  --foreground: #1b2838;
-  --card: #f7fafc;
-  --card-foreground: #1b2838;
-  --popover: #f7fafc;
-  --popover-foreground: #1b2838;
-  --primary: #1676a6;
-  --primary-foreground: #ffffff;
-  --secondary: #d9e6ef;
-  --secondary-foreground: #1b2838;
-  --muted: #dfe9f0;
-  --muted-foreground: #536b7e;
-  --accent: #c7d5e0;
-  --accent-foreground: #1b2838;
+  --background: #d8d6d0;
+  --foreground: #20262a;
+  --card: #ebe9e3;
+  --card-foreground: #20262a;
+  --popover: #f0eee8;
+  --popover-foreground: #20262a;
+  --primary: #b9682f;
+  --primary-foreground: #fffaf2;
+  --secondary: #c9cbc7;
+  --secondary-foreground: #20262a;
+  --muted: #d0d2cf;
+  --muted-foreground: #5a656c;
+  --accent: #dbc7aa;
+  --accent-foreground: #35271c;
   --destructive: oklch(0.59 0.22 27);
-  --border: #bdcbd6;
-  --input: #aabcc9;
-  --ring: #1a9fff;
+  --border: #a9adb0;
+  --input: #8f979c;
+  --ring: #c97939;
   --radius: 0.5rem;
-  --sidebar: #dfeaf2;
-  --sidebar-foreground: #1b2838;
-  --sidebar-accent: #c7d5e0;
-  --sidebar-accent-foreground: #1b2838;
-  --sidebar-border: #b8c9d5;
-  --brand-accent: #1676a6;
-  --brand-hover: #1a9fff;
-  --brand-on-accent: #ffffff;
+  --sidebar: #c7c9c6;
+  --sidebar-foreground: #20262a;
+  --sidebar-accent: #b9bdbb;
+  --sidebar-accent-foreground: #20262a;
+  --sidebar-border: #9fa5a8;
+  --brand-accent: #b9682f;
+  --brand-hover: #d28243;
+  --brand-on-accent: #fffaf2;
 }
 
 .dark {
   color-scheme: dark;
-  --background: #1b2838;
-  --foreground: #c7d5e0;
-  --card: #22384a;
-  --card-foreground: #c7d5e0;
-  --popover: #24394b;
-  --popover-foreground: #c7d5e0;
-  --primary: #66c0f4;
-  --primary-foreground: #0e141b;
-  --secondary: #2a475e;
-  --secondary-foreground: #c7d5e0;
-  --muted: #263e52;
-  --muted-foreground: #8fabbc;
-  --accent: #2a475e;
-  --accent-foreground: #ffffff;
+  --background: #151a1e;
+  --foreground: #e5e9e8;
+  --card: #252d32;
+  --card-foreground: #e5e9e8;
+  --popover: #2a3338;
+  --popover-foreground: #e5e9e8;
+  --primary: #e1a05c;
+  --primary-foreground: #25170c;
+  --secondary: #30393e;
+  --secondary-foreground: #e5e9e8;
+  --muted: #2c3439;
+  --muted-foreground: #9ea9ad;
+  --accent: #53412f;
+  --accent-foreground: #f5e8d7;
   --destructive: oklch(0.68 0.2 24);
-  --border: #34536a;
-  --input: #41647c;
-  --ring: #66c0f4;
-  --sidebar: #171a21;
-  --sidebar-foreground: #c7d5e0;
-  --sidebar-accent: #2a475e;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #2a475e;
-  --brand-accent: #66c0f4;
-  --brand-hover: #8ed5ff;
-  --brand-on-accent: #0e141b;
+  --border: #465158;
+  --input: #5a666c;
+  --ring: #e1a05c;
+  --sidebar: #101518;
+  --sidebar-foreground: #e5e9e8;
+  --sidebar-accent: #293238;
+  --sidebar-accent-foreground: #f4f7f6;
+  --sidebar-border: #313b41;
+  --brand-accent: #e1a05c;
+  --brand-hover: #f0b777;
+  --brand-on-accent: #25170c;
 }
 
 @layer base {
@@ -115,7 +115,7 @@
     @apply bg-background text-foreground;
     background-image:
       radial-gradient(circle at 15% -10%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 30%),
-      radial-gradient(circle at 90% 0%, color-mix(in oklch, #66c0f4 7%, transparent), transparent 25%);
+      radial-gradient(circle at 90% 0%, color-mix(in oklch, #c4864d 6%, transparent), transparent 25%);
     background-attachment: fixed;
   }
 
@@ -144,5 +144,250 @@
 
   .dark [data-slot="card"] {
     box-shadow: 0 1px 2px rgb(0 0 0 / 18%), 0 14px 34px rgb(0 0 0 / 12%);
+  }
+
+  .skeuo-page [data-slot="card"] {
+    border-color: color-mix(in srgb, var(--border) 82%, white);
+    background-image: linear-gradient(150deg, color-mix(in srgb, var(--card) 96%, white), color-mix(in srgb, var(--card) 82%, var(--muted)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 66%),
+      inset 0 -2px 3px color-mix(in srgb, var(--foreground) 7%, transparent),
+      0 3px 5px color-mix(in srgb, var(--foreground) 14%, transparent),
+      0 14px 26px color-mix(in srgb, var(--foreground) 5%, transparent);
+  }
+
+  .skeuo-page-heading {
+    position: relative;
+    padding: 1.25rem;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, white);
+    border-radius: calc(var(--radius) * 1.5);
+    background: linear-gradient(135deg, color-mix(in srgb, var(--card) 96%, white), color-mix(in srgb, var(--muted) 84%, var(--card)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 70%),
+      inset 0 -2px 4px color-mix(in srgb, var(--foreground) 8%, transparent),
+      0 3px 5px color-mix(in srgb, var(--foreground) 14%, transparent),
+      0 14px 28px color-mix(in srgb, var(--foreground) 6%, transparent);
+  }
+
+  .skeuo-page-heading::before,
+  .skeuo-page-heading::after {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 72%, white);
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 60%), 0 1px 1px rgb(0 0 0 / 20%);
+    content: "";
+  }
+
+  .skeuo-page-heading::before {
+    top: 8px;
+    left: 8px;
+  }
+
+  .skeuo-page-heading::after {
+    right: 8px;
+    bottom: 8px;
+  }
+
+  .skeuo-page [data-slot="input"],
+  .skeuo-page select,
+  [data-slot="dialog-content"] [data-slot="input"],
+  [data-slot="dialog-content"] select {
+    border-color: color-mix(in srgb, var(--input) 86%, black);
+    background: color-mix(in srgb, var(--background) 76%, var(--muted));
+    box-shadow:
+      inset 0 2px 4px color-mix(in srgb, var(--foreground) 16%, transparent),
+      0 1px 0 rgb(255 255 255 / 55%);
+  }
+
+  .skeuo-page [data-slot="switch"] {
+    border-color: color-mix(in srgb, var(--input) 78%, black);
+    box-shadow: inset 0 2px 4px rgb(0 0 0 / 25%), 0 1px 0 rgb(255 255 255 / 35%);
+  }
+
+  .skeuo-page [data-slot="switch-thumb"] {
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 60%), 0 1px 3px rgb(0 0 0 / 38%);
+  }
+
+  .skeuo-page [data-slot="checkbox"] {
+    box-shadow: inset 0 2px 3px color-mix(in srgb, var(--foreground) 18%, transparent), 0 1px 0 rgb(255 255 255 / 46%);
+  }
+
+  .bg-lime-400[data-slot="button"] {
+    border-color: color-mix(in srgb, var(--brand-accent) 72%, black);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 38%),
+      inset 0 -2px 1px rgb(0 0 0 / 18%),
+      0 3px 0 color-mix(in srgb, var(--brand-accent) 54%, black),
+      0 7px 14px color-mix(in srgb, var(--brand-accent) 25%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .bg-lime-400[data-slot="button"]:active {
+    box-shadow: inset 0 2px 4px rgb(0 0 0 / 24%), 0 1px 0 color-mix(in srgb, var(--brand-accent) 54%, black);
+    transform: translateY(2px);
+  }
+
+  .skeuo-page [data-slot="table-header"] {
+    background: color-mix(in srgb, var(--muted) 84%, var(--card));
+    box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--foreground) 12%, transparent);
+  }
+
+  .skeuo-page [data-slot="table-row"]:hover {
+    background: color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+
+  [data-slot="dialog-content"] {
+    border: 1px solid color-mix(in srgb, var(--border) 78%, white);
+    background-image: linear-gradient(145deg, color-mix(in srgb, var(--popover) 96%, white), color-mix(in srgb, var(--popover) 82%, var(--muted)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 62%),
+      inset 0 -2px 4px color-mix(in srgb, var(--foreground) 8%, transparent),
+      0 22px 60px rgb(0 0 0 / 34%);
+  }
+
+  [data-slot="dialog-overlay"] {
+    background: rgb(8 10 12 / 40%);
+    backdrop-filter: blur(3px);
+  }
+
+  .dark .skeuo-page [data-slot="card"],
+  .dark .skeuo-page-heading,
+  .dark [data-slot="dialog-content"] {
+    border-color: color-mix(in srgb, var(--border) 80%, black);
+    background-image: linear-gradient(145deg, color-mix(in srgb, var(--card) 91%, white), color-mix(in srgb, var(--card) 74%, black));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 10%),
+      inset 0 -2px 4px rgb(0 0 0 / 25%),
+      0 5px 10px rgb(0 0 0 / 28%),
+      0 18px 34px rgb(0 0 0 / 14%);
+  }
+
+  .skeuo-login [data-slot="card"] {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 62%),
+      inset 0 -2px 5px color-mix(in srgb, var(--foreground) 10%, transparent),
+      0 24px 64px rgb(0 0 0 / 24%);
+  }
+
+  .skeuo-console,
+  .skeuo-bank {
+    position: relative;
+    border: 1px solid color-mix(in srgb, var(--border) 82%, white);
+    border-radius: calc(var(--radius) * 1.5);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--card) 96%, white), color-mix(in srgb, var(--muted) 86%, var(--card)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 72%),
+      inset 0 -2px 4px color-mix(in srgb, var(--foreground) 8%, transparent),
+      0 2px 3px color-mix(in srgb, var(--foreground) 15%, transparent),
+      0 14px 28px color-mix(in srgb, var(--foreground) 7%, transparent);
+  }
+
+  .skeuo-console::before,
+  .skeuo-console::after,
+  .skeuo-bank::before,
+  .skeuo-bank::after {
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    border: 1px solid color-mix(in srgb, var(--foreground) 28%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--muted) 72%, white);
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 60%), 0 1px 1px rgb(0 0 0 / 20%);
+    content: "";
+  }
+
+  .skeuo-console::before,
+  .skeuo-bank::before {
+    top: 8px;
+    left: 8px;
+  }
+
+  .skeuo-console::after,
+  .skeuo-bank::after {
+    right: 8px;
+    bottom: 8px;
+  }
+
+  .skeuo-button {
+    border: 1px solid color-mix(in srgb, var(--brand-accent) 72%, black);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 38%),
+      inset 0 -2px 1px rgb(0 0 0 / 18%),
+      0 3px 0 color-mix(in srgb, var(--brand-accent) 54%, black),
+      0 7px 14px color-mix(in srgb, var(--brand-accent) 25%, transparent);
+    transform: translateY(-1px);
+    transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+  }
+
+  .skeuo-button:active {
+    box-shadow:
+      inset 0 2px 4px rgb(0 0 0 / 24%),
+      0 1px 0 color-mix(in srgb, var(--brand-accent) 54%, black);
+    transform: translateY(2px);
+  }
+
+  .skeuo-led {
+    width: 8px;
+    height: 8px;
+    border: 1px solid color-mix(in srgb, var(--brand-accent) 74%, black);
+    border-radius: 999px;
+    background: var(--brand-accent);
+    box-shadow: inset 0 1px 1px rgb(255 255 255 / 55%), 0 0 9px var(--brand-accent);
+  }
+
+  .skeuo-dashboard .skeuo-stat {
+    border-color: color-mix(in srgb, var(--border) 78%, white);
+    background-image: linear-gradient(145deg, color-mix(in srgb, var(--card) 96%, white), color-mix(in srgb, var(--muted) 75%, var(--card)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 70%),
+      inset 0 -2px 3px color-mix(in srgb, var(--foreground) 8%, transparent),
+      0 3px 5px color-mix(in srgb, var(--foreground) 13%, transparent),
+      0 12px 22px color-mix(in srgb, var(--foreground) 5%, transparent);
+  }
+
+  .skeuo-icon-well {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--border) 90%, black);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--background) 72%, var(--muted));
+    box-shadow: inset 0 2px 4px color-mix(in srgb, var(--foreground) 18%, transparent), 0 1px 0 rgb(255 255 255 / 60%);
+  }
+
+  .skeuo-bank > div:last-child > [data-slot="card"] {
+    border-color: color-mix(in srgb, var(--border) 82%, black);
+    background-image: linear-gradient(155deg, color-mix(in srgb, var(--card) 96%, white), color-mix(in srgb, var(--card) 86%, var(--muted)));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 58%),
+      0 2px 5px color-mix(in srgb, var(--foreground) 18%, transparent);
+  }
+
+  .dark .skeuo-console,
+  .dark .skeuo-bank {
+    border-color: color-mix(in srgb, var(--border) 82%, black);
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--card) 88%, white), color-mix(in srgb, var(--background) 82%, black));
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 11%),
+      inset 0 -2px 5px rgb(0 0 0 / 30%),
+      0 3px 5px rgb(0 0 0 / 30%),
+      0 18px 36px rgb(0 0 0 / 16%);
+  }
+
+  .dark .skeuo-dashboard .skeuo-stat,
+  .dark .skeuo-bank > div:last-child > [data-slot="card"] {
+    border-color: color-mix(in srgb, var(--border) 78%, black);
+    background-image: linear-gradient(145deg, color-mix(in srgb, var(--card) 92%, white), color-mix(in srgb, var(--card) 76%, black));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%), inset 0 -2px 4px rgb(0 0 0 / 24%), 0 4px 8px rgb(0 0 0 / 28%);
+  }
+
+  [class*="rgba(163,230,53"] {
+    background-image: radial-gradient(circle at 80% 20%, rgb(225 160 92 / 10%), transparent 45%) !important;
   }
 }

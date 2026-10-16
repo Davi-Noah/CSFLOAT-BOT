@@ -76,22 +76,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  createMonitor,
+  deleteMonitor,
+  getHealth,
+  listMonitors,
+  setMonitorActive,
+  updateMonitor,
+  type ApiStatus,
+  type Monitor,
+  type MonitorInput,
+} from "@/lib/api";
 
 type View = "overview" | "monitors" | "alerts" | "destinations" | "invites" | "settings";
-type Monitor = {
-  id: number;
-  name: string;
-  skin: string;
-  minPrice: number;
-  maxPrice: number;
-  maxFloat: number;
-  minDiscount: number;
-  itemType: string;
-  listingType: string;
-  interval: string;
-  destinations: string[];
-  active: boolean;
-};
 type Destination = { id: number; type: "Discord" | "Telegram"; name: string; detail: string; active: boolean };
 type Invite = { id: number; code: string; status: "Active" | "Used" | "Revoked"; created: string; usedBy?: string };
 type Preferences = {
@@ -103,12 +100,6 @@ type Preferences = {
   apiMode: "shared" | "personal";
   apiKey: string;
 };
-
-const defaultMonitors: Monitor[] = [
-  { id: 1, name: "AK-47 low float", skin: "AK-47", minPrice: 20, maxPrice: 120, maxFloat: 0.18, minDiscount: 15, itemType: "Normal", listingType: "Buy now", interval: "30 sec", destinations: ["Deals HQ", "Personal alerts"], active: true },
-  { id: 2, name: "High discount finds", skin: "Any skin", minPrice: 10, maxPrice: 80, maxFloat: 1, minDiscount: 25, itemType: "Any", listingType: "Buy now", interval: "1 min", destinations: ["Personal alerts"], active: true },
-  { id: 3, name: "AWP collection", skin: "AWP", minPrice: 30, maxPrice: 300, maxFloat: 0.35, minDiscount: 10, itemType: "Any", listingType: "Any", interval: "1 hour", destinations: ["Deals HQ"], active: false },
-];
 
 const defaultDestinations: Destination[] = [
   { id: 1, type: "Discord", name: "Deals HQ", detail: "#float-alerts", active: true },
@@ -139,7 +130,7 @@ const viewMeta: Record<View, { label: string; description: string; icon: typeof 
 };
 
 function Brand() {
-  return <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-lime-400 text-zinc-950 shadow-[0_0_28px_rgba(163,230,53,0.22)]"><Crosshair className="size-5" strokeWidth={2.4} /></div><div><p className="font-semibold tracking-tight">FloatScout</p><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Market watcher</p></div></div>;
+  return <div className="flex items-center gap-3"><div className="grid size-9 place-items-center rounded-xl bg-lime-400 text-zinc-950 shadow-[0_0_24px_rgba(225,160,92,0.24)]"><Crosshair className="size-5" strokeWidth={2.4} /></div><div><p className="font-semibold tracking-tight">FloatScout</p><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Market watcher</p></div></div>;
 }
 
 function Navigation({ view, onNavigate }: { view: View; onNavigate: (view: View) => void }) {
@@ -155,6 +146,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
 }
 
+function formatInterval(seconds: number) {
+  if (seconds >= 3600) return `${seconds / 3600} hour`;
+  if (seconds >= 60) return `${seconds / 60} min`;
+  return `${seconds} sec`;
+}
+
 function AlertCard({ alert, currency }: { alert: (typeof alerts)[number]; currency: string }) {
   const rates: Record<string, { rate: number; symbol: string }> = { USD: { rate: 1, symbol: "$" }, BRL: { rate: 5.34, symbol: "R$" }, EUR: { rate: 0.86, symbol: "€" }, CNY: { rate: 7.12, symbol: "¥" } };
   const chosen = rates[currency] ?? rates.USD;
@@ -167,7 +164,10 @@ export default function Home() {
   const [dark, setDark] = useState(true);
   const [signedIn, setSignedIn] = useState(true);
   const [hydrated, setHydrated] = useState(false);
-  const [monitors, setMonitors] = useState<Monitor[]>(defaultMonitors);
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [apiStatus, setApiStatus] = useState<ApiStatus>("checking");
+  const [monitorsLoading, setMonitorsLoading] = useState(true);
+  const [monitorsError, setMonitorsError] = useState("");
   const [destinations, setDestinations] = useState<Destination[]>(defaultDestinations);
   const [invites, setInvites] = useState<Invite[]>(defaultInvites);
   const [preferences, setPreferences] = useState<Preferences>(defaultPreferences);
@@ -186,7 +186,6 @@ export default function Home() {
         const saved = localStorage.getItem("floatscout-mock");
         if (saved) {
           const data = JSON.parse(saved);
-          if (data.monitors) setMonitors(data.monitors);
           if (data.destinations) setDestinations(data.destinations);
           if (data.invites) setInvites(data.invites);
           if (data.preferences) setPreferences(data.preferences);
@@ -201,15 +200,34 @@ export default function Home() {
   useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem("floatscout-mock", JSON.stringify({ monitors, destinations, invites, preferences, dark, signedIn }));
-  }, [hydrated, monitors, destinations, invites, preferences, dark, signedIn]);
+    localStorage.setItem("floatscout-mock", JSON.stringify({ destinations, invites, preferences, dark, signedIn }));
+  }, [hydrated, destinations, invites, preferences, dark, signedIn]);
   useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(""), 2600); return () => window.clearTimeout(timer); }, [notice]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBackend() {
+      setMonitorsLoading(true);
+      const [healthResult, monitorsResult] = await Promise.allSettled([getHealth(), listMonitors()]);
+      if (cancelled) return;
+      setApiStatus(healthResult.status === "fulfilled" && healthResult.value.status === "ok" && healthResult.value.database === "ok" ? "online" : "offline");
+      if (monitorsResult.status === "fulfilled") {
+        setMonitors(monitorsResult.value);
+        setMonitorsError("");
+      } else {
+        setMonitorsError("Could not load monitors from the API.");
+      }
+      setMonitorsLoading(false);
+    }
+    void loadBackend();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const context = (document as Document & { modelContext?: { registerTool?: (tool: unknown, options?: { signal?: AbortSignal }) => void | Promise<void> } }).modelContext;
     if (!context?.registerTool) return;
     const lifecycle = new AbortController();
-    void Promise.resolve(context.registerTool({ name: "create_mock_monitor", title: "Create FloatScout monitor", description: "Create a monitor in the local FloatScout prototype.", inputSchema: { type: "object", properties: { name: { type: "string" }, skin: { type: "string" } }, required: ["name", "skin"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input: unknown) { const value = input as { name: string; skin: string }; const created: Monitor = { ...defaultMonitors[0], id: Date.now(), name: value.name, skin: value.skin, destinations: [], active: true }; setMonitors((current) => [...current, created]); return { id: created.id, status: "created" }; } }, { signal: lifecycle.signal })).catch(() => undefined);
+    void Promise.resolve(context.registerTool({ name: "create_monitor", title: "Create FloatScout monitor", description: "Create a persisted FloatScout monitor.", inputSchema: { type: "object", properties: { name: { type: "string" }, skin: { type: "string" } }, required: ["name", "skin"], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, async execute(input: unknown) { const value = input as { name: string; skin: string }; const created = await createMonitor({ name: value.name, skin: value.skin, minPrice: 10, maxPrice: 100, maxFloat: 0.2, minDiscount: 15, itemType: "Any", listingType: "Buy now", scanIntervalSeconds: 3600, destinations: [], active: true }); setMonitors((current) => [...current, created]); return { id: created.id, status: "created" }; } }, { signal: lifecycle.signal })).catch(() => undefined);
     return () => lifecycle.abort();
   }, []);
 
@@ -218,13 +236,44 @@ export default function Home() {
   const openNewMonitor = () => { setEditingMonitor(null); setMonitorDialog(true); };
   const filteredAlerts = useMemo(() => alerts.filter((alert) => (alertFilter === "All monitors" || alert.monitor === alertFilter) && alert.name.toLowerCase().includes(alertSearch.toLowerCase())), [alertFilter, alertSearch]);
 
-  function saveMonitor(event: FormEvent<HTMLFormElement>) {
+  async function saveMonitor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const destinationList = destinations.filter((item) => form.get(`destination-${item.id}`) === "on").map((item) => item.name);
-    const monitor: Monitor = { id: editingMonitor?.id ?? Date.now(), name: String(form.get("name")), skin: String(form.get("skin")), minPrice: Number(form.get("minPrice")), maxPrice: Number(form.get("maxPrice")), maxFloat: Number(form.get("maxFloat")), minDiscount: Number(form.get("minDiscount")), itemType: String(form.get("itemType")), listingType: String(form.get("listingType")), interval: String(form.get("interval")), destinations: destinationList, active: editingMonitor?.active ?? true };
-    setMonitors((current) => editingMonitor ? current.map((item) => item.id === editingMonitor.id ? monitor : item) : [...current, monitor]);
-    setMonitorDialog(false); flash(editingMonitor ? "Monitor updated" : "Monitor created");
+    const input: MonitorInput = { name: String(form.get("name")), skin: String(form.get("skin")), minPrice: Number(form.get("minPrice")), maxPrice: Number(form.get("maxPrice")), maxFloat: Number(form.get("maxFloat")), minDiscount: Number(form.get("minDiscount")), itemType: String(form.get("itemType")), listingType: String(form.get("listingType")), scanIntervalSeconds: Number(form.get("scanIntervalSeconds")), destinations: destinationList, active: editingMonitor?.active ?? true };
+    try {
+      const saved = editingMonitor ? await updateMonitor(editingMonitor.id, input) : await createMonitor(input);
+      setMonitors((current) => editingMonitor ? current.map((item) => item.id === saved.id ? saved : item) : [...current, saved]);
+      setMonitorDialog(false);
+      setMonitorsError("");
+      flash(editingMonitor ? "Monitor updated" : "Monitor created");
+    } catch (error) {
+      setMonitorsError(error instanceof Error ? error.message : "Could not save monitor.");
+      flash("Could not save monitor");
+    }
+  }
+
+  async function toggleMonitor(id: string, active: boolean) {
+    try {
+      const saved = await setMonitorActive(id, active);
+      setMonitors((items) => items.map((item) => item.id === id ? saved : item));
+      setMonitorsError("");
+    } catch (error) {
+      setMonitorsError(error instanceof Error ? error.message : "Could not change monitor status.");
+      flash("Could not change monitor status");
+    }
+  }
+
+  async function removeMonitor(id: string) {
+    try {
+      await deleteMonitor(id);
+      setMonitors((items) => items.filter((item) => item.id !== id));
+      setMonitorsError("");
+      flash("Monitor deleted");
+    } catch (error) {
+      setMonitorsError(error instanceof Error ? error.message : "Could not delete monitor.");
+      flash("Could not delete monitor");
+    }
   }
 
   function saveDestination(event: FormEvent<HTMLFormElement>) {
@@ -241,14 +290,14 @@ export default function Home() {
 
   if (!signedIn) return <LoginScreen dark={dark} setDark={setDark} onLogin={() => { setSignedIn(true); flash("Signed in with Discord"); }} />;
 
-  return <div className="min-h-screen bg-background text-foreground">
+  return <div className="skeuo-shell min-h-screen bg-background text-foreground">
     {notice && <div className="fixed left-1/2 top-4 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-full border bg-popover px-4 py-2 text-sm font-medium shadow-xl"><Check className="size-4 text-lime-500" />{notice}</div>}
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-sidebar/95 p-5 shadow-[4px_0_24px_rgba(15,23,42,0.03)] backdrop-blur-xl lg:flex lg:flex-col"><Brand /><div className="mt-10 flex-1"><Navigation view={view} onNavigate={navigate} /></div><button onClick={() => navigate("settings")} className={`mb-3 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium ${view === "settings" ? "bg-lime-400/12 text-lime-500 dark:text-lime-400" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><Settings className="size-4" />Settings</button><div className="rounded-xl border bg-background/70 p-3"><div className="flex items-center gap-2 text-xs font-medium"><span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-lime-400 opacity-50" /><span className="relative inline-flex size-2 rounded-full bg-lime-400" /></span>Scanner online</div><p className="mt-1 text-xs text-muted-foreground">Last scan 12 seconds ago</p></div></aside>
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r bg-sidebar/95 p-5 shadow-[4px_0_24px_rgba(15,23,42,0.03)] backdrop-blur-xl lg:flex lg:flex-col"><Brand /><div className="mt-10 flex-1"><Navigation view={view} onNavigate={navigate} /></div><button onClick={() => navigate("settings")} className={`mb-3 flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium ${view === "settings" ? "bg-lime-400/12 text-lime-500 dark:text-lime-400" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}><Settings className="size-4" />Settings</button><div className="rounded-xl border bg-background/70 p-3"><div className="flex items-center gap-2 text-xs font-medium"><span className="relative flex size-2"><span className={`relative inline-flex size-2 rounded-full ${apiStatus === "online" ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]" : apiStatus === "offline" ? "bg-red-500" : "animate-pulse bg-amber-400"}`} /></span>{apiStatus === "online" ? "API online" : apiStatus === "offline" ? "API offline" : "Checking API"}</div><p className="mt-1 text-xs text-muted-foreground">{apiStatus === "online" ? "Database connected" : apiStatus === "offline" ? "Check the backend service" : "Connecting to backend"}</p></div></aside>
     <div className="lg:pl-64">
       <header className="sticky top-0 z-20 border-b bg-background/90 backdrop-blur-xl"><div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"><div className="lg:hidden"><Sheet><SheetTrigger render={<Button variant="ghost" size="icon" aria-label="Open menu" />}><Menu /></SheetTrigger><SheetContent side="left" className="w-72 p-5"><SheetHeader className="p-0"><SheetTitle className="sr-only">Navigation</SheetTitle><SheetDescription className="sr-only">FloatScout navigation</SheetDescription><Brand /></SheetHeader><div className="mt-6"><Navigation view={view} onNavigate={navigate} /></div></SheetContent></Sheet></div><p className="hidden text-sm font-medium lg:block">{viewMeta[view].label}</p><div className="lg:hidden"><Brand /></div><div className="flex items-center gap-1.5"><Button variant="ghost" size="icon" aria-label="Toggle theme" onClick={() => setDark((value) => !value)}>{dark ? <Sun /> : <Moon />}</Button><Button variant="ghost" size="icon" aria-label="Notifications" onClick={() => navigate("alerts")}><Bell /></Button><button onClick={() => navigate("settings")}><Avatar className="ml-1 size-8"><AvatarFallback className="bg-indigo-500 text-xs font-semibold text-white">DN</AvatarFallback></Avatar></button></div></div></header>
-      <main className="mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
-        {view === "overview" && <Overview monitors={monitors} currency={preferences.currency} onNew={openNewMonitor} onNavigate={navigate} toggleMonitor={(id, active) => setMonitors((items) => items.map((item) => item.id === id ? { ...item, active } : item))} />}
-        {view === "monitors" && <MonitorsView monitors={monitors} onNew={openNewMonitor} onEdit={(monitor) => { setEditingMonitor(monitor); setMonitorDialog(true); }} onDelete={(id) => { setMonitors((items) => items.filter((item) => item.id !== id)); flash("Monitor deleted"); }} onToggle={(id, active) => setMonitors((items) => items.map((item) => item.id === id ? { ...item, active } : item))} />}
+      <main className="skeuo-page mx-auto max-w-7xl px-4 pb-24 pt-6 sm:px-6 lg:px-8 lg:pb-10 lg:pt-8">
+        {view === "overview" && <Overview monitors={monitors} currency={preferences.currency} apiStatus={apiStatus} onNew={openNewMonitor} onNavigate={navigate} toggleMonitor={toggleMonitor} />}
+        {view === "monitors" && <MonitorsView monitors={monitors} loading={monitorsLoading} error={monitorsError} onNew={openNewMonitor} onEdit={(monitor) => { setEditingMonitor(monitor); setMonitorDialog(true); }} onDelete={removeMonitor} onToggle={toggleMonitor} />}
         {view === "alerts" && <AlertsView alerts={filteredAlerts} currency={preferences.currency} search={alertSearch} setSearch={setAlertSearch} filter={alertFilter} setFilter={setAlertFilter} monitors={monitors} />}
         {view === "destinations" && <DestinationsView destinations={destinations} onAdd={() => setDestinationDialog(true)} onDelete={(id) => { setDestinations((items) => items.filter((item) => item.id !== id)); flash("Destination removed"); }} onToggle={(id, active) => setDestinations((items) => items.map((item) => item.id === id ? { ...item, active } : item))} />}
         {view === "invites" && <InvitesView invites={invites} onNew={() => setInviteDialog(true)} onCopy={(code) => { void navigator.clipboard?.writeText(`https://floatscout.app/invite/${code}`); flash("Invite link copied"); }} onRevoke={(id) => { setInvites((items) => items.map((item) => item.id === id ? { ...item, status: "Revoked" } : item)); flash("Invite revoked"); }} />}
@@ -263,21 +312,38 @@ export default function Home() {
   </div>;
 }
 
-function PageHeading({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) { return <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>{action}</section>; }
+function PageHeading({ title, description, action }: { title: string; description: string; action?: React.ReactNode }) { return <section className="skeuo-page-heading flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-lime-500">Control module</p><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>{action}</section>; }
 
-function Overview({ monitors, currency, onNew, onNavigate, toggleMonitor }: { monitors: Monitor[]; currency: string; onNew: () => void; onNavigate: (view: View) => void; toggleMonitor: (id: number, active: boolean) => void }) {
-  return <><section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-lime-500"><Activity className="size-3.5" />Live market intelligence</div><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Good morning, Davi.</h1><p className="mt-1 text-sm text-muted-foreground">Your scouts are watching CSFloat for the right deals.</p></div><Button size="lg" onClick={onNew} className="h-10 bg-lime-400 px-4 text-zinc-950 hover:bg-lime-300"><Plus />New monitor</Button></section><section className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">{[
-    { label: "Active monitors", value: String(monitors.filter((item) => item.active).length), detail: `${monitors.length} total`, icon: Radar }, { label: "Deals today", value: "12", detail: "+4 from yesterday", icon: Target }, { label: "Best discount", value: "31.8%", detail: "M4A1-S | Printstream", icon: Sparkles }, { label: "Avg. scan time", value: "182ms", detail: "API healthy", icon: Gauge },
-  ].map((stat) => <Card key={stat.label} className="relative min-h-32 justify-between bg-card/70"><CardHeader><CardDescription className="pr-8 text-xs">{stat.label}</CardDescription><CardAction><stat.icon className="size-4 text-lime-500" /></CardAction><CardTitle className="mt-1 text-2xl font-semibold tracking-tight">{stat.value}</CardTitle></CardHeader><CardContent className="text-[11px] text-muted-foreground">{stat.detail}</CardContent></Card>)}</section><section className="mt-8"><SectionHeader title="Your monitors" subtitle="Each scout has its own filters and destinations." onMore={() => onNavigate("monitors")} /><div className="grid gap-3 xl:grid-cols-2">{monitors.slice(0, 2).map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} onToggle={toggleMonitor} />)}</div></section><section className="mt-8"><SectionHeader title="Recent alerts" subtitle="Opportunities that matched your monitors." onMore={() => onNavigate("alerts")} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{alerts.slice(0, 3).map((alert) => <AlertCard key={alert.id} alert={alert} currency={currency} />)}</div></section></>;
+function Overview({ monitors, currency, apiStatus, onNew, onNavigate, toggleMonitor }: { monitors: Monitor[]; currency: string; apiStatus: ApiStatus; onNew: () => void; onNavigate: (view: View) => void; toggleMonitor: (id: string, active: boolean) => void }) {
+  return <div className="skeuo-dashboard">
+    <section className="skeuo-console flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+      <div>
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-lime-500"><span className="skeuo-led" /><Activity className="size-3.5" />Live market intelligence</div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Good morning, Davi.</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Your scouts are watching CSFloat for the right deals.</p>
+      </div>
+      <Button size="lg" onClick={onNew} className="skeuo-button h-11 bg-lime-400 px-5 text-zinc-950 hover:bg-lime-300"><Plus />New monitor</Button>
+    </section>
+
+    <section className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">{[
+      { label: "Active monitors", value: String(monitors.filter((item) => item.active).length), detail: `${monitors.length} total`, icon: Radar },
+      { label: "Deals today", value: "12", detail: "+4 from yesterday", icon: Target },
+      { label: "Best discount", value: "31.8%", detail: "M4A1-S | Printstream", icon: Sparkles },
+      { label: "Backend", value: apiStatus === "online" ? "Online" : apiStatus === "offline" ? "Offline" : "Checking", detail: apiStatus === "online" ? "API + database healthy" : "Live health check", icon: Gauge },
+    ].map((stat) => <Card key={stat.label} className="skeuo-stat relative min-h-32 justify-between bg-card/70"><CardHeader><CardDescription className="pr-8 text-xs font-semibold uppercase tracking-[0.08em]">{stat.label}</CardDescription><CardAction><span className="skeuo-icon-well"><stat.icon className="size-4 text-lime-500" /></span></CardAction><CardTitle className="mt-1 text-2xl font-semibold tracking-tight">{stat.value}</CardTitle></CardHeader><CardContent className="text-[11px] text-muted-foreground">{stat.detail}</CardContent></Card>)}</section>
+
+    <section className="skeuo-bank mt-7 p-4 sm:p-5"><SectionHeader title="Your monitors" subtitle="Each scout has its own filters and destinations." onMore={() => onNavigate("monitors")} /><div className="grid gap-3 xl:grid-cols-2">{monitors.slice(0, 2).map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} onToggle={toggleMonitor} />)}</div></section>
+    <section className="skeuo-bank mt-7 p-4 sm:p-5"><SectionHeader title="Recent alerts" subtitle="Opportunities that matched your monitors." onMore={() => onNavigate("alerts")} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{alerts.slice(0, 3).map((alert) => <AlertCard key={alert.id} alert={alert} currency={currency} />)}</div></section>
+  </div>;
 }
 
 function SectionHeader({ title, subtitle, onMore }: { title: string; subtitle: string; onMore: () => void }) { return <div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold tracking-tight">{title}</h2><p className="text-xs text-muted-foreground">{subtitle}</p></div><Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onMore}>View all <ChevronRight /></Button></div>; }
 
-function MonitorCard({ monitor, onToggle, onEdit, onDelete }: { monitor: Monitor; onToggle: (id: number, active: boolean) => void; onEdit?: (monitor: Monitor) => void; onDelete?: (id: number) => void }) {
-  return <Card className="bg-card/70"><CardHeader><div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-lime-400/10 text-lime-500"><Compass className="size-5" /></div><div><CardTitle>{monitor.name}</CardTitle><CardDescription className="mt-0.5 text-xs">{monitor.skin} · {monitor.listingType}</CardDescription></div></div><CardAction><Switch checked={monitor.active} onCheckedChange={(checked) => onToggle(monitor.id, checked)} aria-label={`Toggle ${monitor.name}`} className="data-checked:bg-lime-400" /></CardAction></CardHeader><CardContent><div className="flex flex-wrap gap-1.5"><Badge variant="outline" className="font-normal">${monitor.minPrice}–${monitor.maxPrice}</Badge><Badge variant="outline" className="font-normal">Float ≤ {monitor.maxFloat}</Badge><Badge variant="outline" className="font-normal">{monitor.minDiscount}%+ off</Badge><Badge variant="outline" className="font-normal">{monitor.itemType}</Badge></div><div className="mt-4 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><Clock3 className="size-3.5" />{monitor.interval}</span><span className="flex items-center gap-1.5"><Bell className="size-3.5" />{monitor.destinations.length} destinations</span>{onEdit && <span className="flex gap-1"><Button variant="ghost" size="icon-xs" onClick={() => onEdit(monitor)} aria-label="Edit monitor"><Pencil /></Button><Button variant="ghost" size="icon-xs" onClick={() => onDelete?.(monitor.id)} aria-label="Delete monitor" className="text-destructive"><Trash2 /></Button></span>}</div></CardContent></Card>;
+function MonitorCard({ monitor, onToggle, onEdit, onDelete }: { monitor: Monitor; onToggle: (id: string, active: boolean) => void; onEdit?: (monitor: Monitor) => void; onDelete?: (id: string) => void }) {
+  return <Card className="bg-card/70"><CardHeader><div className="flex items-start gap-3"><div className="grid size-10 shrink-0 place-items-center rounded-xl bg-lime-400/10 text-lime-500"><Compass className="size-5" /></div><div><CardTitle>{monitor.name}</CardTitle><CardDescription className="mt-0.5 text-xs">{monitor.skin} · {monitor.listingType}</CardDescription></div></div><CardAction><Switch checked={monitor.active} onCheckedChange={(checked) => onToggle(monitor.id, checked)} aria-label={`Toggle ${monitor.name}`} className="data-checked:bg-lime-400" /></CardAction></CardHeader><CardContent><div className="flex flex-wrap gap-1.5"><Badge variant="outline" className="font-normal">${monitor.minPrice}–${monitor.maxPrice}</Badge><Badge variant="outline" className="font-normal">Float ≤ {monitor.maxFloat}</Badge><Badge variant="outline" className="font-normal">{monitor.minDiscount}%+ off</Badge><Badge variant="outline" className="font-normal">{monitor.itemType}</Badge></div><div className="mt-4 flex items-center justify-between border-t pt-3 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><Clock3 className="size-3.5" />{formatInterval(monitor.scanIntervalSeconds)}</span><span className="flex items-center gap-1.5"><Bell className="size-3.5" />{monitor.destinations.length} destinations</span>{onEdit && <span className="flex gap-1"><Button variant="ghost" size="icon-xs" onClick={() => onEdit(monitor)} aria-label="Edit monitor"><Pencil /></Button><Button variant="ghost" size="icon-xs" onClick={() => onDelete?.(monitor.id)} aria-label="Delete monitor" className="text-destructive"><Trash2 /></Button></span>}</div></CardContent></Card>;
 }
 
-function MonitorsView({ monitors, onNew, onEdit, onDelete, onToggle }: { monitors: Monitor[]; onNew: () => void; onEdit: (monitor: Monitor) => void; onDelete: (id: number) => void; onToggle: (id: number, active: boolean) => void }) { return <><PageHeading title="Monitors" description="Create independent scouts for different market strategies." action={<Button onClick={onNew} className="bg-lime-400 text-zinc-950 hover:bg-lime-300"><Plus />New monitor</Button>} /><div className="mt-6 grid gap-3 xl:grid-cols-2">{monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} />)}</div></>; }
+function MonitorsView({ monitors, loading, error, onNew, onEdit, onDelete, onToggle }: { monitors: Monitor[]; loading: boolean; error: string; onNew: () => void; onEdit: (monitor: Monitor) => void; onDelete: (id: string) => void; onToggle: (id: string, active: boolean) => void }) { return <><PageHeading title="Monitors" description="Create independent scouts for different market strategies." action={<Button onClick={onNew} className="bg-lime-400 text-zinc-950 hover:bg-lime-300"><Plus />New monitor</Button>} />{error && <div className="mt-5 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}{loading ? <div className="mt-6 rounded-xl border p-6 text-sm text-muted-foreground">Loading monitors from the API...</div> : monitors.length === 0 ? <EmptyState icon={Radar} title="No monitors yet" description="Create your first monitor to start watching CSFloat." /> : <div className="mt-6 grid gap-3 xl:grid-cols-2">{monitors.map((monitor) => <MonitorCard key={monitor.id} monitor={monitor} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} />)}</div>}</>; }
 
 function AlertsView({ alerts: items, currency, search, setSearch, filter, setFilter, monitors }: { alerts: typeof alerts; currency: string; search: string; setSearch: (value: string) => void; filter: string; setFilter: (value: string) => void; monitors: Monitor[] }) { return <><PageHeading title="Alert history" description="Review the deals discovered by every monitor." /><div className="mt-6 flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search skins..." className="h-10 pl-9" /></div><SelectField value={filter} onChange={setFilter} className="sm:w-56"><option>All monitors</option>{monitors.map((monitor) => <option key={monitor.id}>{monitor.name}</option>)}</SelectField></div><div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">{items.map((alert) => <AlertCard key={alert.id} alert={alert} currency={currency} />)}</div>{items.length === 0 && <EmptyState icon={Search} title="No alerts found" description="Try a different search or monitor filter." />}</>; }
 
@@ -287,8 +353,8 @@ function InvitesView({ invites, onNew, onCopy, onRevoke }: { invites: Invite[]; 
 
 function SettingsView({ preferences, setPreferences, dark, setDark, onSave, onSignOut }: { preferences: Preferences; setPreferences: (value: Preferences) => void; dark: boolean; setDark: (value: boolean) => void; onSave: () => void; onSignOut: () => void }) { const update = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setPreferences({ ...preferences, [key]: value }); return <><PageHeading title="Settings" description="Manage your account, monitoring plan, and preferences." /><div className="mt-6 grid gap-4 xl:grid-cols-[1fr_1fr]"><Card className="bg-card/70"><CardHeader><CardTitle>Account</CardTitle><CardDescription>Signed in through Discord</CardDescription></CardHeader><CardContent><div className="flex items-center gap-3"><Avatar className="size-11"><AvatarFallback className="bg-indigo-500 text-white">DN</AvatarFallback></Avatar><div><p className="font-medium">Davi Noah</p><p className="text-xs text-muted-foreground">@davi.noah · Owner</p></div></div><Button variant="outline" className="mt-4 text-destructive" onClick={onSignOut}><LogOut />Sign out</Button></CardContent></Card><Card className="bg-card/70"><CardHeader><CardTitle>Appearance</CardTitle><CardDescription>Choose display defaults for this device.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex items-center justify-between"><div><p className="text-sm font-medium">Dark mode</p><p className="text-xs text-muted-foreground">FloatScout defaults to dark.</p></div><Switch checked={dark} onCheckedChange={setDark} className="data-checked:bg-lime-400" /></div><Field label="Display currency"><SelectField value={preferences.currency} onChange={(value) => update("currency", value)}><option>USD</option><option>BRL</option><option>EUR</option><option>CNY</option></SelectField></Field><Field label="Timezone"><SelectField value={preferences.timezone} onChange={(value) => update("timezone", value)}><option>America/Fortaleza</option><option>America/Sao_Paulo</option><option>UTC</option><option>Europe/London</option><option>Asia/Shanghai</option></SelectField></Field></CardContent></Card><Card className="bg-card/70"><CardHeader><CardTitle>Monitoring plan</CardTitle><CardDescription>Shared access is slower; your own key unlocks faster scans.</CardDescription></CardHeader><CardContent><div className="grid grid-cols-2 gap-2">{(["shared", "personal"] as const).map((mode) => <button key={mode} onClick={() => update("apiMode", mode)} className={`rounded-xl border p-3 text-left ${preferences.apiMode === mode ? "border-lime-400 bg-lime-400/10" : "bg-muted/30"}`}><div className="flex items-center gap-2 font-medium">{mode === "shared" ? <Users className="size-4" /> : <KeyRound className="size-4" />}{mode === "shared" ? "Shared" : "Personal key"}</div><p className="mt-1 text-xs text-muted-foreground">{mode === "shared" ? "Updates hourly" : "Faster intervals"}</p></button>)}</div>{preferences.apiMode === "personal" && <Field label="CSFloat API key"><Input type="password" value={preferences.apiKey} onChange={(event) => update("apiKey", event.target.value)} placeholder="Paste your API key" className="mt-4" /></Field>}</CardContent></Card><Card className="bg-card/70"><CardHeader><CardTitle>Quiet hours</CardTitle><CardDescription>Matching deals remain in history without sending messages.</CardDescription><CardAction><Switch checked={preferences.quietHours} onCheckedChange={(value) => update("quietHours", value)} className="data-checked:bg-lime-400" /></CardAction></CardHeader><CardContent className="grid grid-cols-2 gap-3"><Field label="Starts"><Input type="time" value={preferences.quietStart} onChange={(event) => update("quietStart", event.target.value)} disabled={!preferences.quietHours} /></Field><Field label="Ends"><Input type="time" value={preferences.quietEnd} onChange={(event) => update("quietEnd", event.target.value)} disabled={!preferences.quietHours} /></Field></CardContent></Card></div><Button className="mt-5 bg-lime-400 text-zinc-950 hover:bg-lime-300" onClick={onSave}><Check />Save settings</Button></>; }
 
-function MonitorDialog({ open, onOpenChange, monitor, destinations, onSubmit }: { open: boolean; onOpenChange: (value: boolean) => void; monitor: Monitor | null; destinations: Destination[]; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) { return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{monitor ? "Edit monitor" : "Create a monitor"}</DialogTitle><DialogDescription>Define exactly which CSFloat listings should trigger an alert.</DialogDescription></DialogHeader><form onSubmit={onSubmit} className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><Field label="Monitor name"><Input name="name" required defaultValue={monitor?.name} placeholder="e.g. AK low float" /></Field><Field label="Skin or weapon"><Input name="skin" required defaultValue={monitor?.skin ?? "Any skin"} /></Field><Field label="Minimum price (USD)"><Input name="minPrice" type="number" min="0" step="0.01" required defaultValue={monitor?.minPrice ?? 10} /></Field><Field label="Maximum price (USD)"><Input name="maxPrice" type="number" min="0" step="0.01" required defaultValue={monitor?.maxPrice ?? 100} /></Field><Field label="Maximum float"><Input name="maxFloat" type="number" min="0" max="1" step="0.0001" required defaultValue={monitor?.maxFloat ?? 0.2} /></Field><Field label="Minimum discount (%)"><Input name="minDiscount" type="number" min="0" max="100" required defaultValue={monitor?.minDiscount ?? 15} /></Field><Field label="Item type"><select name="itemType" defaultValue={monitor?.itemType ?? "Any"} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option>Any</option><option>Normal</option><option>StatTrak</option><option>Souvenir</option></select></Field><Field label="Listing type"><select name="listingType" defaultValue={monitor?.listingType ?? "Buy now"} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option>Any</option><option>Buy now</option><option>Auction</option></select></Field><Field label="Scan interval"><select name="interval" defaultValue={monitor?.interval ?? "1 hour"} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option>30 sec</option><option>1 min</option><option>5 min</option><option>1 hour</option></select></Field></div><div><Label>Destinations</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{destinations.map((item) => <label key={item.id} className="flex items-center gap-2 rounded-lg border p-3 text-sm"><Checkbox name={`destination-${item.id}`} defaultChecked={monitor?.destinations.includes(item.name)} />{item.name}<span className="ml-auto text-xs text-muted-foreground">{item.type}</span></label>)}</div></div><DialogFooter><Button type="submit" className="bg-lime-400 text-zinc-950 hover:bg-lime-300"><Zap />{monitor ? "Save changes" : "Create monitor"}</Button></DialogFooter></form></DialogContent></Dialog>; }
+function MonitorDialog({ open, onOpenChange, monitor, destinations, onSubmit }: { open: boolean; onOpenChange: (value: boolean) => void; monitor: Monitor | null; destinations: Destination[]; onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void> }) { return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl"><DialogHeader><DialogTitle>{monitor ? "Edit monitor" : "Create a monitor"}</DialogTitle><DialogDescription>Define exactly which CSFloat listings should trigger an alert.</DialogDescription></DialogHeader><form onSubmit={onSubmit} className="space-y-4"><div className="grid gap-4 sm:grid-cols-2"><Field label="Monitor name"><Input name="name" required defaultValue={monitor?.name} placeholder="e.g. AK low float" /></Field><Field label="Skin or weapon"><Input name="skin" required defaultValue={monitor?.skin ?? "Any skin"} /></Field><Field label="Minimum price (USD)"><Input name="minPrice" type="number" min="0" step="0.01" required defaultValue={monitor?.minPrice ?? 10} /></Field><Field label="Maximum price (USD)"><Input name="maxPrice" type="number" min="0" step="0.01" required defaultValue={monitor?.maxPrice ?? 100} /></Field><Field label="Maximum float"><Input name="maxFloat" type="number" min="0" max="1" step="0.0001" required defaultValue={monitor?.maxFloat ?? 0.2} /></Field><Field label="Minimum discount (%)"><Input name="minDiscount" type="number" min="0" max="100" required defaultValue={monitor?.minDiscount ?? 15} /></Field><Field label="Item type"><select name="itemType" defaultValue={monitor?.itemType ?? "Any"} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option>Any</option><option>Normal</option><option>StatTrak</option><option>Souvenir</option></select></Field><Field label="Listing type"><select name="listingType" defaultValue={monitor?.listingType ?? "Buy now"} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option>Any</option><option>Buy now</option><option>Auction</option></select></Field><Field label="Scan interval"><select name="scanIntervalSeconds" defaultValue={monitor?.scanIntervalSeconds ?? 3600} className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"><option value="30">30 sec</option><option value="60">1 min</option><option value="300">5 min</option><option value="3600">1 hour</option></select></Field></div><div><Label>Destinations</Label><div className="mt-2 grid gap-2 sm:grid-cols-2">{destinations.map((item) => <label key={item.id} className="flex items-center gap-2 rounded-lg border p-3 text-sm"><Checkbox name={`destination-${item.id}`} defaultChecked={monitor?.destinations.includes(item.name)} />{item.name}<span className="ml-auto text-xs text-muted-foreground">{item.type}</span></label>)}</div></div><DialogFooter><Button type="submit" className="bg-lime-400 text-zinc-950 hover:bg-lime-300"><Zap />{monitor ? "Save changes" : "Create monitor"}</Button></DialogFooter></form></DialogContent></Dialog>; }
 
 function EmptyState({ icon: Icon, title, description }: { icon: typeof Search; title: string; description: string }) { return <div className="mt-8 grid place-items-center rounded-xl border border-dashed p-10 text-center"><Icon className="size-8 text-muted-foreground" /><p className="mt-3 font-medium">{title}</p><p className="mt-1 text-sm text-muted-foreground">{description}</p></div>; }
 
-function LoginScreen({ dark, setDark, onLogin }: { dark: boolean; setDark: (value: boolean) => void; onLogin: () => void }) { return <main className="grid min-h-screen place-items-center px-4"><Button variant="ghost" size="icon" className="fixed right-4 top-4" onClick={() => setDark(!dark)}>{dark ? <Sun /> : <Moon />}</Button><Card className="w-full max-w-sm bg-card/80 p-2 text-center backdrop-blur"><CardHeader><div className="mx-auto mb-3"><Brand /></div><CardTitle className="text-xl">Welcome to FloatScout</CardTitle><CardDescription>This is a local interactive preview. Discord authentication is simulated.</CardDescription></CardHeader><CardContent><Button className="h-11 w-full bg-indigo-500 text-white hover:bg-indigo-400" onClick={onLogin}><MessageCircle />Continue with Discord</Button><p className="mt-4 text-xs text-muted-foreground">Invite-only access · No real account will be created</p></CardContent></Card></main>; }
+function LoginScreen({ dark, setDark, onLogin }: { dark: boolean; setDark: (value: boolean) => void; onLogin: () => void }) { return <main className="skeuo-page skeuo-login grid min-h-screen place-items-center px-4"><Button variant="ghost" size="icon" className="fixed right-4 top-4" onClick={() => setDark(!dark)}>{dark ? <Sun /> : <Moon />}</Button><Card className="w-full max-w-sm bg-card/80 p-2 text-center backdrop-blur"><CardHeader><div className="mx-auto mb-3"><Brand /></div><CardTitle className="text-xl">Welcome to FloatScout</CardTitle><CardDescription>This is a local interactive preview. Discord authentication is simulated.</CardDescription></CardHeader><CardContent><Button className="skeuo-button h-11 w-full bg-lime-400 text-zinc-950 hover:bg-lime-300" onClick={onLogin}><MessageCircle />Continue with Discord</Button><p className="mt-4 text-xs text-muted-foreground">Invite-only access · No real account will be created</p></CardContent></Card></main>; }
